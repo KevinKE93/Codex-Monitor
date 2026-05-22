@@ -6,6 +6,8 @@
 
 Codex Monitor 是一个本地只读的 Codex Desktop 监控浮层。它可以在现有 Codex 窗口中显示 context window 使用情况和 token 消耗，不修改客户端安装包，也不会把本地会话数据复制进仓库。
 
+![Codex Monitor demo](assets/codex-monitor-demo.svg)
+
 ## 作者
 
 由 Kevin KE 制作。
