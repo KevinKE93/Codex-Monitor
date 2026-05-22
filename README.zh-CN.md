@@ -31,6 +31,7 @@ Codex Monitor 是一个本地只读的 Codex Desktop 监控浮层。它可以在
 
 这是推荐方式。脚本会用本地 DevTools 端口打开 Codex，并持续运行 injector；当 Codex renderer 重启后，浮层会自动恢复。
 injector 默认每 10 秒刷新一次 session payload；普通的页面切换和 DOM 更新由页面内 observer 处理。
+为了减少卡顿，侧边栏 hover 的 summary 默认覆盖最近 100 个 session；每条消息后的 chip 详情默认只解析最近 12 个 session。如需给更早的 session 显示 chip，可以直接运行 `context_token_injector.py` 并设置 `--detail-limit`。
 
 手动用本地 DevTools 端口启动 Codex：
 

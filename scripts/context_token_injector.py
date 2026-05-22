@@ -31,6 +31,8 @@ import context_token_inspector as inspector
 
 
 DEFAULT_PORT = 9222
+ASSISTANT_DETAIL_ITEM_LIMIT = 40
+DETAIL_SESSION_LIMIT = 12
 
 
 class CDPError(RuntimeError):
@@ -215,7 +217,12 @@ def runtime_state(client: CDPClient) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def build_payload(paths: list[str], limit: int, selected_thread_id: str | None) -> dict[str, Any]:
+def build_payload(
+    paths: list[str],
+    limit: int,
+    selected_thread_id: str | None,
+    detail_limit: int = DETAIL_SESSION_LIMIT,
+) -> dict[str, Any]:
     files = inspector.session_files(paths, limit=limit)
     summaries = [inspector.summarize_session_fast(path) for path in files]
     summaries = [summary for summary in summaries if summary.get("session_total_tokens")]
@@ -258,7 +265,8 @@ def build_payload(paths: list[str], limit: int, selected_thread_id: str | None) 
 
     details_by_thread: dict[str, dict[str, Any]] = {}
     detail: dict[str, Any] | None = None
-    for summary in summaries:
+    detail_summaries = summaries[: max(0, detail_limit)]
+    for summary in detail_summaries:
         if not summary.get("path"):
             continue
         parsed = inspector.parse_session_detail(str(summary["path"]))
@@ -268,6 +276,8 @@ def build_payload(paths: list[str], limit: int, selected_thread_id: str | None) 
             if message.get("role") == "assistant" and message.get("token_usage")
         ]
         total_rounds = len(assistant_token_messages)
+        assistant_item_messages = assistant_token_messages[-ASSISTANT_DETAIL_ITEM_LIMIT:]
+        assistant_start_index = total_rounds - len(assistant_item_messages)
         assistant_items = [
             {
                 "footer": message.get("token_footer"),
@@ -275,7 +285,7 @@ def build_payload(paths: list[str], limit: int, selected_thread_id: str | None) 
                     message["token_usage"],
                     user_turn_index=message.get("turn_index"),
                     user_total_turns=message.get("total_turns"),
-                    assistant_turn_index=index,
+                    assistant_turn_index=assistant_start_index + index,
                     assistant_total_turns=total_rounds,
                 ),
                 "tokenUsage": message["token_usage"],
@@ -284,10 +294,10 @@ def build_payload(paths: list[str], limit: int, selected_thread_id: str | None) 
                 "totalRounds": message.get("total_turns") or total_rounds,
                 "userTurnIndex": message.get("turn_index"),
                 "userTotalTurns": message.get("total_turns"),
-                "assistantTurnIndex": index,
+                "assistantTurnIndex": assistant_start_index + index,
                 "assistantTotalTurns": total_rounds,
             }
-            for index, message in enumerate(assistant_token_messages, start=1)
+            for index, message in enumerate(assistant_item_messages, start=1)
         ]
         assistant_chips = [
             item["chip"]
@@ -1052,6 +1062,10 @@ INJECTION_SCRIPT = r"""
     toggle.textContent = root.getAttribute('data-collapsed') === 'true' ? '+' : '−';
     updateUnitButtons(root);
   }
+  function clearFooters() {
+    document.querySelectorAll(`[${FOOTER_ATTR}]`).forEach(node => node.remove());
+    document.querySelectorAll(`[${CHIP_ATTR}]`).forEach(node => node.remove());
+  }
   function detailForCurrentThread(payload) {
     const details = payload.detailsByThread || {};
     for (const key of threadKeys(activeThreadId() || payload.activeThreadId || payload.selectedThreadId)) {
@@ -1059,18 +1073,47 @@ INJECTION_SCRIPT = r"""
     }
     return payload.detail;
   }
+  function scheduleDetailApply(payload) {
+    if (window.__codexContextTokenInspectorDetailTimer) {
+      clearTimeout(window.__codexContextTokenInspectorDetailTimer);
+    }
+    if (window.__codexContextTokenInspectorIdleCallback && window.cancelIdleCallback) {
+      window.cancelIdleCallback(window.__codexContextTokenInspectorIdleCallback);
+      window.__codexContextTokenInspectorIdleCallback = null;
+    }
+    const run = () => {
+      window.__codexContextTokenInspectorDetailTimer = null;
+      const work = () => {
+        if (window.__codexContextTokenInspectorApplying) return;
+        window.__codexContextTokenInspectorApplying = true;
+        try {
+          const currentDetail = detailForVisiblePage(payload) || detailForCurrentThread(payload);
+          payload.currentDetailThreadId = currentDetail?.thread_id || null;
+          applyHud(payload, currentDetail);
+          applyFooters(currentDetail);
+        } finally {
+          setTimeout(() => { window.__codexContextTokenInspectorApplying = false; }, 0);
+        }
+      };
+      if (window.requestIdleCallback) {
+        window.__codexContextTokenInspectorIdleCallback = window.requestIdleCallback(work, { timeout: 900 });
+      } else {
+        setTimeout(work, 0);
+      }
+    };
+    window.__codexContextTokenInspectorDetailTimer = setTimeout(run, 220);
+  }
   function applyAll(payload) {
     window.__codexContextTokenInspectorApplying = true;
     try {
       payload.activeThreadId = activeThreadId() || payload.activeThreadId;
       applySidebar(payload.summaries || []);
-      const currentDetail = detailForVisiblePage(payload) || detailForCurrentThread(payload);
-      payload.currentDetailThreadId = currentDetail?.thread_id || null;
-      applyHud(payload, currentDetail);
-      applyFooters(currentDetail);
+      applyHud(payload, detailForCurrentThread(payload));
+      clearFooters();
     } finally {
       setTimeout(() => { window.__codexContextTokenInspectorApplying = false; }, 0);
     }
+    scheduleDetailApply(payload);
   }
   function installObserver(payload) {
     window.__codexContextTokenInspectorPayload = payload;
@@ -1082,7 +1125,7 @@ INJECTION_SCRIPT = r"""
       timer = setTimeout(() => {
         timer = null;
         applyAll(window.__codexContextTokenInspectorPayload);
-      }, 450);
+      }, 650);
     });
     observer.observe(document.body, { childList: true, subtree: true });
     window.__codexContextTokenInspectorObserver = observer;
@@ -1112,9 +1155,9 @@ INJECTION_SCRIPT = r"""
 """
 
 
-def inject_once(client: CDPClient, roots: list[str], limit: int) -> Any:
+def inject_once(client: CDPClient, roots: list[str], limit: int, detail_limit: int) -> Any:
     state = runtime_state(client)
-    payload = build_payload(roots, limit, state.get("activeThreadId"))
+    payload = build_payload(roots, limit, state.get("activeThreadId"), detail_limit=detail_limit)
     expression = f"({INJECTION_SCRIPT})({json.dumps(payload, ensure_ascii=False)})"
     return client.evaluate(expression)
 
@@ -1123,6 +1166,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Codex DevTools port.")
     parser.add_argument("--limit", type=int, default=100, help="Maximum recent sessions to inspect.")
+    parser.add_argument(
+        "--detail-limit",
+        type=int,
+        default=DETAIL_SESSION_LIMIT,
+        help="Maximum recent sessions to parse for per-message chips.",
+    )
     parser.add_argument("--interval", type=float, default=10.0, help="Refresh interval in seconds.")
     parser.add_argument("--once", action="store_true", help="Inject once and exit.")
     parser.add_argument(
@@ -1140,7 +1189,7 @@ def main(argv: list[str] | None = None) -> int:
     client = CDPClient(str(target["webSocketDebuggerUrl"]))
     try:
         while True:
-            result = inject_once(client, roots, args.limit)
+            result = inject_once(client, roots, args.limit, args.detail_limit)
             print(json.dumps(result, ensure_ascii=False))
             if args.once:
                 break
