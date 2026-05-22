@@ -22,6 +22,33 @@ Built by Kevin KE.
 - Collapsed Monitor keeps the compact title and expand button while hiding unit controls.
 - Local-only operation through Chrome DevTools Protocol.
 
+## Install
+
+Copy this GitHub URL:
+
+```text
+https://github.com/KevinKE93/Codex-Monitor
+```
+
+In Codex Desktop, open the plugin or marketplace install entry and paste the URL. If you prefer the CLI, run:
+
+```bash
+codex plugin marketplace add https://github.com/KevinKE93/Codex-Monitor --ref main
+codex plugin add codex-monitor@codex-monitor
+```
+
+After installation, ask Codex:
+
+```text
+Start Codex Monitor.
+```
+
+The plugin install makes the `codex-monitor` skill available. The visible overlay still needs the local injector to run. For automatic startup after login, Codex restart, or Codex update, run this from the installed plugin root:
+
+```bash
+./scripts/install_launch_agent.sh 9222
+```
+
 ## Usage
 
 Run the monitor with automatic re-injection:
@@ -73,6 +100,7 @@ This repository is also packaged as a Codex plugin:
 
 - Manifest: `.codex-plugin/plugin.json`
 - Skill: `skills/codex-monitor/SKILL.md`
+- Marketplace manifest for GitHub install: `.agents/plugins/marketplace.json`
 
 The plugin exposes the local scripts and usage workflow. Current Codex plugins do not provide a supported native render hook for the desktop sidebar or message DOM, so the visible overlay is still opt-in through the local DevTools injector.
 

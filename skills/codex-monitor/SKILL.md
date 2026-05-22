@@ -11,6 +11,23 @@ Use this skill when the user asks to show Codex context usage, token usage, sess
 
 Codex Monitor is local and read-only. It does not patch `Codex.app`, `app.asar`, session JSONL files, auth files, or Codex settings. It reads local Codex session logs and injects temporary DOM elements into a Codex renderer launched with a local Chrome DevTools port.
 
+## Install From GitHub
+
+Use the repository URL:
+
+```text
+https://github.com/KevinKE93/Codex-Monitor
+```
+
+Codex CLI equivalent:
+
+```bash
+codex plugin marketplace add https://github.com/KevinKE93/Codex-Monitor --ref main
+codex plugin add codex-monitor@codex-monitor
+```
+
+The plugin install only makes this skill and the local scripts available. To show the overlay, start the monitor from the installed plugin root.
+
 ## Start Monitor
 
 From the plugin root:
