@@ -5,6 +5,10 @@ codex_monitor_devtools_available() {
   curl --max-time 0.4 -fsS "http://127.0.0.1:${port}/json" >/dev/null 2>&1
 }
 
+codex_monitor_codex_running() {
+  pgrep -f "^/Applications/Codex.app/Contents/MacOS/Codex($| )" >/dev/null 2>&1
+}
+
 codex_monitor_port_listening() {
   local port="${1:?port required}"
   python3 - "${port}" <<'PY'

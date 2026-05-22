@@ -48,6 +48,7 @@ If the requested port is occupied, the scripts automatically choose the next ava
 ```
 
 This installs a macOS LaunchAgent that keeps Codex Monitor running after login, Codex restart, and Codex updates.
+In LaunchAgent mode, Monitor waits while Codex is closed; it does not reopen Codex after a normal user quit.
 
 ```bash
 ./scripts/uninstall_launch_agent.sh

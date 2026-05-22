@@ -28,6 +28,7 @@ cat > "${PLIST}" <<PLIST
     <string>/bin/bash</string>
     <string>${ROOT_DIR}/scripts/start_codex_monitor.sh</string>
     <string>${PORT}</string>
+    <string>--no-reopen-after-quit</string>
   </array>
   <key>RunAtLoad</key>
   <true/>

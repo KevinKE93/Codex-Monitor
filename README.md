@@ -51,6 +51,8 @@ The plugin install makes the `codex-monitor` skill available. The visible overla
 ./scripts/install_launch_agent.sh 9222
 ```
 
+The LaunchAgent waits while Codex is closed. It does not reopen Codex after a normal user quit.
+
 ## Usage
 
 Run the monitor with automatic re-injection:
@@ -69,6 +71,8 @@ Install the macOS LaunchAgent for automatic start after login, Codex restart, or
 ```bash
 ./scripts/install_launch_agent.sh 9222
 ```
+
+In LaunchAgent mode, Monitor waits for Codex to be opened again instead of forcing Codex to relaunch after you quit it.
 
 Stop automatic start:
 
@@ -94,7 +98,7 @@ Run it again after restarting Codex. The injected UI keeps itself updated while 
 
 Codex Monitor injects temporary DOM elements into the active Codex renderer. That is deliberate: it avoids changing `Codex.app` or app resources. If Codex Desktop upgrades, restarts, or replaces the renderer, the injected UI disappears and must be injected again.
 
-Use `./scripts/start_codex_monitor.sh 9222` for the automated path. It relaunches Codex with the DevTools port, runs the injector in a loop, and reopens/reinjects when the DevTools endpoint disappears. Use `./scripts/install_launch_agent.sh 9222` to keep this loop alive after login, Codex restart, and Codex updates. If a future Codex release changes the DOM anchors for sidebar rows or assistant messages, the monitor will still read token data, but chip placement may need a selector update.
+Use `./scripts/start_codex_monitor.sh 9222` for the automated path. It relaunches Codex with the DevTools port, runs the injector in a loop, and reopens/reinjects when the DevTools endpoint disappears. Use `./scripts/install_launch_agent.sh 9222` to keep this loop alive after login, Codex restart, and Codex updates. The LaunchAgent passes `--no-reopen-after-quit`, so it waits while Codex is intentionally closed and resumes after you open Codex again. If a future Codex release changes the DOM anchors for sidebar rows or assistant messages, the monitor will still read token data, but chip placement may need a selector update.
 
 ## Codex Plugin
 
