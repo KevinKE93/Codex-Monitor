@@ -341,21 +341,21 @@ def format_reply_chip(
     percent = summary.get("latest_context_percent")
     percent_text = f" ({percent:.1f}%)" if isinstance(percent, float) else ""
     chip = (
-        f"ctx {comma(summary.get('latest_context_tokens'))}/"
+        f"Token: Current {comma(summary.get('latest_context_tokens'))}/"
         f"{comma(summary.get('context_window'))}{percent_text} | "
-        f"turn token {comma(summary.get('latest_turn_total_tokens'))} | "
-        f"total token {comma(summary.get('session_total_tokens'))}"
+        f"Total {comma(summary.get('latest_turn_total_tokens'))}/"
+        f"{comma(summary.get('session_total_tokens'))}"
     )
     user_index = user_turn_index if user_turn_index is not None else round_index
     user_total = user_total_turns if user_total_turns is not None else total_rounds
     assistant_index = assistant_turn_index if assistant_turn_index is not None else round_index
     assistant_total = assistant_total_turns if assistant_total_turns is not None else total_rounds
     if user_index is not None and user_total is not None:
-        chip += f"  user rounds {user_index}/{user_total}"
+        chip += f"   Rounds：User {user_index}/{user_total}"
         if assistant_index is not None and assistant_total is not None:
-            chip += f", assistant rounds {assistant_index}/{assistant_total}"
+            chip += f"  | Assistant {assistant_index}/{assistant_total}"
     elif assistant_index is not None and assistant_total is not None:
-        chip += f"  assistant rounds {assistant_index}/{assistant_total}"
+        chip += f"   Rounds：Assistant {assistant_index}/{assistant_total}"
     return chip
 
 

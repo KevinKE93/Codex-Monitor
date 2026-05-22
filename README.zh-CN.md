@@ -15,7 +15,8 @@ Codex Monitor 是一个本地只读的 Codex Desktop 监控浮层。它可以在
 ## 主要功能
 
 - 在 Codex Desktop 内显示可拖动的 `Monitor` 面板。
-- 在每条回复后显示 chip：包含 context 使用量、本轮 token、当前 session 累计 token、user rounds 和 assistant rounds。
+- Monitor 收起时在标题里直接显示当前 session 总 token，例如 `Monitor (ttk:58.9M)`。
+- 在每条回复后显示 chip，格式为 `Token: Current ... | Total ...   Rounds：User ... | Assistant ...`。
 - 左侧会话列表 hover 面板显示当前 session 的 total、input、cached input、output 和 reasoning token。
 - token 单位支持 raw、K、M，默认使用 K。
 - Monitor 收起后只保留紧凑标题和展开按钮，隐藏单位切换控件。
@@ -32,6 +33,19 @@ Codex Monitor 是一个本地只读的 Codex Desktop 监控浮层。它可以在
 这是推荐方式。脚本会用本地 DevTools 端口打开 Codex，并持续运行 injector；当 Codex renderer 重启后，浮层会自动恢复。
 injector 默认每 10 秒刷新一次 session payload；普通的页面切换和 DOM 更新由页面内 observer 处理。
 为了减少卡顿，侧边栏 hover 的 summary 默认覆盖最近 100 个 session；每条消息后的 chip 详情默认只解析最近 12 个 session。如需给更早的 session 显示 chip，可以直接运行 `context_token_injector.py` 并设置 `--detail-limit`。
+如果请求的端口被占用，脚本会自动切到下一个可用的本地端口。
+
+安装 macOS LaunchAgent，让 Monitor 在登录后、Codex 重启后、Codex 更新后自动拉起：
+
+```bash
+./scripts/install_launch_agent.sh 9222
+```
+
+停止自动启动：
+
+```bash
+./scripts/uninstall_launch_agent.sh
+```
 
 手动用本地 DevTools 端口启动 Codex：
 
@@ -51,7 +65,7 @@ Codex 重启后需要重新运行。当前页面保持打开时，已注入的 U
 
 Codex Monitor 注入的是临时 DOM 元素，这是有意设计的：它避免修改 `Codex.app` 或客户端资源。如果 Codex Desktop 升级、重启或替换 renderer，已注入的 UI 会消失，需要重新注入。
 
-自动化方式请使用 `./scripts/start_codex_monitor.sh 9222`。它会用 DevTools 端口重新启动 Codex，并循环运行 injector；当 DevTools endpoint 消失时，会重新打开并注入。如果未来 Codex 改动了侧边栏行或 assistant 消息的 DOM anchor，Monitor 仍然能读取 token 数据，但 chip 挂载位置可能需要更新 selector。
+自动化方式请使用 `./scripts/start_codex_monitor.sh 9222`。它会用 DevTools 端口重新启动 Codex，并循环运行 injector；当 DevTools endpoint 消失时，会重新打开并注入。使用 `./scripts/install_launch_agent.sh 9222` 可以让这个循环在登录后、Codex 重启后、Codex 更新后持续自动拉起。如果未来 Codex 改动了侧边栏行或 assistant 消息的 DOM anchor，Monitor 仍然能读取 token 数据，但 chip 挂载位置可能需要更新 selector。
 
 ## Codex 插件
 
@@ -77,8 +91,8 @@ python3 ./scripts/context_token_inspector.py --limit 20 --format table
 | `context` | 当前请求占用的上下文量。 | `last_token_usage.input_tokens` |
 | `context window` | Codex token-count 事件里记录的模型上下文窗口上限。 | `model_context_window` |
 | `left` | 当前请求预计剩余 context。 | `context window - context` |
-| `turn token` | 当前 assistant 回复这一轮的 token 消耗。 | `last_token_usage.total_tokens` |
-| `total token` | 当前 session 的累计 token 消耗。 | `total_token_usage.total_tokens` |
+| `Token: Current` | 当前请求 context 占用量与模型 context window 的比例。 | `last_token_usage.input_tokens / model_context_window` |
+| `Token: Total` | 当前 assistant 回复 token 与当前 session 累计 token 的比例。 | `last_token_usage.total_tokens / total_token_usage.total_tokens` |
 | `session` | Monitor 面板中的当前 session 总消耗，不统计其他会话。 | 最新 session JSONL |
 | `in` | Codex 记录的输入 token。在 Monitor 的 session 行里，它表示当前 session 累计输入。 | `input_tokens` |
 | `cached` | Codex 记录的 cached input token。当重复上下文被复用时，这个值可能较高。 | `cached_input_tokens` |

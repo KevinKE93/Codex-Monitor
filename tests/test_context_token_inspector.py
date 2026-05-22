@@ -219,7 +219,7 @@ class ContextTokenInspectorTests(unittest.TestCase):
         self.assertNotIn("Context  39,949 / 258,400", payload["summaries"][0]["hover"])
         self.assertNotIn("/tmp/project", payload["summaries"][0]["hover"])
         self.assertEqual(len(payload["detail"]["assistantFooters"]), 1)
-        self.assertEqual(payload["detail"]["assistantChips"][0], "ctx 39,949/258,400 (15.5%) | turn token 40,416 | total token 64,016  assistant rounds 1/1")
+        self.assertEqual(payload["detail"]["assistantChips"][0], "Token: Current 39,949/258,400 (15.5%) | Total 40,416/64,016   Rounds：Assistant 1/1")
 
     def test_injector_payload_uses_session_rounds_for_historical_replies(self):
         injector = load_injector()
@@ -275,7 +275,7 @@ class ContextTokenInspectorTests(unittest.TestCase):
 
         self.assertEqual([item["roundIndex"] for item in items], [1, 2, 3])
         self.assertEqual([item["totalRounds"] for item in items], [3, 3, 3])
-        self.assertTrue(payload["detail"]["assistantChips"][2].endswith("assistant rounds 3/3"))
+        self.assertTrue(payload["detail"]["assistantChips"][2].endswith("Rounds：Assistant 3/3"))
 
     def test_rounds_count_user_turns_not_assistant_status_messages(self):
         injector = load_injector()
@@ -375,8 +375,8 @@ class ContextTokenInspectorTests(unittest.TestCase):
 
         self.assertEqual([item["roundIndex"] for item in items], [1, 2, 2])
         self.assertEqual([item["totalRounds"] for item in items], [2, 2, 2])
-        self.assertTrue(payload["detail"]["assistantChips"][0].endswith("user rounds 1/2, assistant rounds 1/3"))
-        self.assertTrue(payload["detail"]["assistantChips"][2].endswith("user rounds 2/2, assistant rounds 3/3"))
+        self.assertTrue(payload["detail"]["assistantChips"][0].endswith("Rounds：User 1/2  | Assistant 1/3"))
+        self.assertTrue(payload["detail"]["assistantChips"][2].endswith("Rounds：User 2/2  | Assistant 3/3"))
 
     def test_injector_payload_prefers_latest_session_over_stale_active_thread(self):
         injector = load_injector()
@@ -433,7 +433,116 @@ class ContextTokenInspectorTests(unittest.TestCase):
         self.assertEqual(payload["selectedThreadId"], "019e4e4a-new")
         self.assertEqual(payload["detail"]["thread_id"], "019e4e4a-new")
         self.assertEqual(len(payload["detail"]["assistantItems"]), 2)
-        self.assertTrue(payload["detail"]["assistantChips"][1].endswith("assistant rounds 2/2"))
+        self.assertTrue(payload["detail"]["assistantChips"][1].endswith("Rounds：Assistant 2/2"))
+
+    def test_injector_payload_includes_active_session_detail_outside_default_window(self):
+        injector = load_injector()
+        tmpdir = pathlib.Path(tempfile.mkdtemp())
+
+        def write(path, session_id, total_tokens):
+            rows = [
+                {
+                    "timestamp": "2026-05-22T06:06:02.814Z",
+                    "type": "session_meta",
+                    "payload": {"id": session_id, "cwd": "/tmp/project"},
+                },
+                {
+                    "timestamp": "2026-05-22T06:06:04.000Z",
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": f"reply {session_id}"}],
+                    },
+                },
+                {
+                    "timestamp": "2026-05-22T06:06:05.000Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "token_count",
+                        "info": {
+                            "total_token_usage": {"total_tokens": total_tokens},
+                            "last_token_usage": {"input_tokens": 100, "total_tokens": 200},
+                            "model_context_window": 1000,
+                        },
+                    },
+                },
+            ]
+            with path.open("w", encoding="utf-8") as handle:
+                for row in rows:
+                    handle.write(json.dumps(row) + "\n")
+
+        for index in range(5):
+            path = tmpdir / f"rollout-2026-05-22T06-0{index}-00-new-{index}.jsonl"
+            write(path, f"new-{index}", 1000 + index)
+            os.utime(path, (1_700_000_100 + index, 1_700_000_100 + index))
+        old_path = tmpdir / "rollout-2026-05-19T18-18-03-019e3fbe-old.jsonl"
+        write(old_path, "019e3fbe-old", 9999)
+        os.utime(old_path, (1_700_000_000, 1_700_000_000))
+
+        payload = injector.build_payload(
+            [str(tmpdir)],
+            limit=10,
+            selected_thread_id="local:019e3fbe-old",
+            detail_limit=2,
+        )
+
+        details = {detail["thread_id"] for detail in payload["detailsByThread"].values()}
+        self.assertIn("019e3fbe-old", details)
+
+    def test_injector_payload_includes_active_session_outside_summary_limit(self):
+        injector = load_injector()
+        tmpdir = pathlib.Path(tempfile.mkdtemp())
+
+        def write(path, session_id, total_tokens):
+            rows = [
+                {
+                    "timestamp": "2026-05-22T06:06:02.814Z",
+                    "type": "session_meta",
+                    "payload": {"id": session_id, "cwd": "/tmp/project"},
+                },
+                {
+                    "timestamp": "2026-05-22T06:06:04.000Z",
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": f"reply {session_id}"}],
+                    },
+                },
+                {
+                    "timestamp": "2026-05-22T06:06:05.000Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "token_count",
+                        "info": {
+                            "total_token_usage": {"total_tokens": total_tokens},
+                            "last_token_usage": {"input_tokens": 1000, "total_tokens": 2000},
+                            "model_context_window": 258400,
+                        },
+                    },
+                },
+            ]
+            with path.open("w", encoding="utf-8") as handle:
+                for row in rows:
+                    handle.write(json.dumps(row) + "\n")
+
+        active_path = tmpdir / "rollout-2026-05-20T01-00-00-019e4e4a-active.jsonl"
+        write(active_path, "019e4e4a-active", 81000)
+        os.utime(active_path, (1_700_000_000, 1_700_000_000))
+        for index in range(3):
+            path = tmpdir / f"rollout-2026-05-22T01-00-0{index}-019e4e4a-new-{index}.jsonl"
+            write(path, f"019e4e4a-new-{index}", 500000 + index)
+            os.utime(path, (1_700_000_100 + index, 1_700_000_100 + index))
+
+        payload = injector.build_payload([str(tmpdir)], limit=2, selected_thread_id="local:019e4e4a-active")
+
+        self.assertIn("019e4e4a-active", [item["thread_id"] for item in payload["summaries"]])
+        self.assertEqual(payload["detailsByThread"]["019e4e4a-active"]["thread_id"], "019e4e4a-active")
+        self.assertEqual(
+            payload["detailsByThread"]["019e4e4a-active"]["assistantItems"][0]["tokenUsage"]["session_total_tokens"],
+            81000,
+        )
 
 
 if __name__ == "__main__":

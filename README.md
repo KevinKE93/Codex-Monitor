@@ -15,7 +15,8 @@ Built by Kevin KE.
 ## Features
 
 - Draggable `Monitor` panel inside Codex Desktop.
-- Per-response chip with context usage, turn token, cumulative session token, current-session user rounds, and assistant rounds.
+- Collapsed Monitor title shows the current session total token value, for example `Monitor (ttk:58.9M)`.
+- Per-response chip in the format `Token: Current ... | Total ...   Rounds: User ... | Assistant ...`.
 - Sidebar hover panel with session-level total, input, cached input, output, and reasoning tokens.
 - Token display unit switcher: raw, K, and M. The default unit is K.
 - Collapsed Monitor keeps the compact title and expand button while hiding unit controls.
@@ -32,6 +33,19 @@ Run the monitor with automatic re-injection:
 This is the recommended path. It opens Codex with a local DevTools port and keeps the injector running so the overlay is restored after a Codex renderer restart.
 The injector refreshes the session payload every 10 seconds by default while the in-page observer handles ordinary UI changes.
 For responsiveness, sidebar hover summaries cover the latest 100 sessions while per-message chip details are parsed for the latest 12 sessions by default. Use `--detail-limit` on `context_token_injector.py` if you need chips for older sessions.
+If the requested port is occupied, the scripts automatically move to the next available local port.
+
+Install the macOS LaunchAgent for automatic start after login, Codex restart, or Codex update:
+
+```bash
+./scripts/install_launch_agent.sh 9222
+```
+
+Stop automatic start:
+
+```bash
+./scripts/uninstall_launch_agent.sh
+```
 
 Launch Codex with a local DevTools port:
 
@@ -51,7 +65,7 @@ Run it again after restarting Codex. The injected UI keeps itself updated while 
 
 Codex Monitor injects temporary DOM elements into the active Codex renderer. That is deliberate: it avoids changing `Codex.app` or app resources. If Codex Desktop upgrades, restarts, or replaces the renderer, the injected UI disappears and must be injected again.
 
-Use `./scripts/start_codex_monitor.sh 9222` for the automated path. It relaunches Codex with the DevTools port, runs the injector in a loop, and reopens/reinjects when the DevTools endpoint disappears. If a future Codex release changes the DOM anchors for sidebar rows or assistant messages, the monitor will still read token data, but chip placement may need a selector update.
+Use `./scripts/start_codex_monitor.sh 9222` for the automated path. It relaunches Codex with the DevTools port, runs the injector in a loop, and reopens/reinjects when the DevTools endpoint disappears. Use `./scripts/install_launch_agent.sh 9222` to keep this loop alive after login, Codex restart, and Codex updates. If a future Codex release changes the DOM anchors for sidebar rows or assistant messages, the monitor will still read token data, but chip placement may need a selector update.
 
 ## Codex Plugin
 
@@ -77,8 +91,8 @@ python3 ./scripts/context_token_inspector.py --limit 20 --format table
 | `context` | Current request context usage. | `last_token_usage.input_tokens` |
 | `context window` | Model context window reported by Codex token-count events. | `model_context_window` |
 | `left` | Estimated remaining context in the current request. | `context window - context` |
-| `turn token` | Token usage for the current assistant response. | `last_token_usage.total_tokens` |
-| `total token` | Cumulative token usage for the current session. | `total_token_usage.total_tokens` |
+| `Token: Current` | Current request context usage against the model context window. | `last_token_usage.input_tokens / model_context_window` |
+| `Token: Total` | Current assistant response token usage against cumulative current-session token usage. | `last_token_usage.total_tokens / total_token_usage.total_tokens` |
 | `session` | Current session total shown in the Monitor panel. It is not a sum across all conversations. | latest session JSONL |
 | `in` | Input tokens recorded by Codex. In the Monitor session line, this is cumulative session input. | `input_tokens` |
 | `cached` | Cached input tokens recorded by Codex. This can be high when repeated context is reused. | `cached_input_tokens` |

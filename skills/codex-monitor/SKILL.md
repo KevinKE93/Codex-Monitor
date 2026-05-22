@@ -22,6 +22,21 @@ From the plugin root:
 This reopens Codex with a local DevTools port, injects the monitor, and loops so the overlay is restored after Codex restarts.
 The injector refreshes the session payload every 10 seconds by default while the in-page observer handles ordinary UI changes.
 For responsiveness, sidebar hover summaries cover the latest 100 sessions while per-message chip details are parsed for the latest 12 sessions by default. Use `--detail-limit` on `context_token_injector.py` if older sessions need chips.
+If the requested port is occupied, the scripts automatically choose the next available local port.
+
+## Auto Start
+
+```bash
+./scripts/install_launch_agent.sh 9222
+```
+
+This installs a macOS LaunchAgent that keeps Codex Monitor running after login, Codex restart, and Codex updates.
+
+```bash
+./scripts/uninstall_launch_agent.sh
+```
+
+This stops and removes the LaunchAgent.
 
 ## Inject Once
 

@@ -235,6 +235,18 @@ def build_payload(
         by_thread[normalized] = summary
         by_thread[f"local:{normalized}"] = summary
     selected = summaries[0] if summaries else None
+    active_selected = by_thread.get(normalize_thread_id(selected_thread_id or "")) if selected_thread_id else None
+    if selected_thread_id and active_selected is None:
+        active_path = session_file_for_thread(paths, selected_thread_id)
+        known_paths = {str(summary.get("path")) for summary in summaries}
+        if active_path and str(active_path) not in known_paths:
+            summary = inspector.summarize_session_fast(active_path)
+            normalized = normalize_thread_id(str(summary.get("thread_id") or ""))
+            if normalized == normalize_thread_id(selected_thread_id) and summary.get("session_total_tokens"):
+                summaries.append(summary)
+                by_thread[normalized] = summary
+                by_thread[f"local:{normalized}"] = summary
+                active_selected = summary
 
     compact_summaries = []
     for summary in summaries:
@@ -266,6 +278,8 @@ def build_payload(
     details_by_thread: dict[str, dict[str, Any]] = {}
     detail: dict[str, Any] | None = None
     detail_summaries = summaries[: max(0, detail_limit)]
+    if active_selected and active_selected not in detail_summaries:
+        detail_summaries.append(active_selected)
     for summary in detail_summaries:
         if not summary.get("path"):
             continue
@@ -360,6 +374,16 @@ def thread_keys(thread_id: Any) -> list[str]:
     return [normalized, f"local:{normalized}"]
 
 
+def session_file_for_thread(paths: list[str], thread_id: str | None) -> Path | None:
+    normalized = normalize_thread_id(thread_id or "")
+    if not normalized:
+        return None
+    for path in inspector.session_files(paths, limit=None):
+        if normalized in path.stem:
+            return path
+    return None
+
+
 INJECTION_SCRIPT = r"""
 (payload => {
   const ROOT_ID = 'codex-context-token-inspector-root';
@@ -427,11 +451,10 @@ INJECTION_SCRIPT = r"""
     const assistantIndex = item.assistantTurnIndex || item.roundIndex || roundIndex;
     const assistantTotal = item.assistantTotalTurns || item.totalRounds || totalRounds;
     const turnText = userIndex && userTotal
-      ? `user rounds ${userIndex}/${userTotal}, assistant rounds ${assistantIndex}/${assistantTotal}`
-      : `assistant rounds ${assistantIndex}/${assistantTotal}`;
-    return `ctx ${token(usage.latest_context_tokens)}/${token(usage.context_window)} (${pct(usage.latest_context_percent)}) | ` +
-      `turn token ${token(usage.latest_turn_total_tokens)} | ` +
-      `total token ${token(usage.session_total_tokens)}  ${turnText}`;
+      ? `Rounds：User ${userIndex}/${userTotal}  | Assistant ${assistantIndex}/${assistantTotal}`
+      : `Rounds：Assistant ${assistantIndex}/${assistantTotal}`;
+    return `Token: Current ${token(usage.latest_context_tokens)}/${token(usage.context_window)} (${pct(usage.latest_context_percent)}) | ` +
+      `Total ${token(usage.latest_turn_total_tokens)}/${token(usage.session_total_tokens)}   ${turnText}`;
   }
   function itemTitle(item, roundIndex, totalRounds) {
     const usage = item?.tokenUsage || {};
@@ -809,6 +832,7 @@ INJECTION_SCRIPT = r"""
         root.setAttribute('data-collapsed', String(next));
         localStorage.setItem(COLLAPSE_KEY, String(next));
         root.querySelector('[data-cti-toggle]').textContent = next ? '+' : '−';
+        updateHudTitle(root);
       });
     }
     document.body.appendChild(root);
@@ -1037,20 +1061,28 @@ INJECTION_SCRIPT = r"""
   function applyHud(payload, currentDetail = null) {
     const root = ensureHud();
     const body = root.querySelector('[data-cti-body]');
-    const currentThreadId = currentDetail?.thread_id || activeThreadId() || payload.activeThreadId || payload.selectedThreadId;
+    const currentThreadId = currentDetail?.thread_id || activeThreadId() || payload.activeThreadId || null;
+    const summaryForThread = threadId => {
+      if (!threadId) return null;
+      const keys = threadKeys(threadId);
+      return payload.summaries.find(item =>
+        keys.some(key => String(item.thread_id) === key || (item.thread_keys || []).includes(key))
+      ) || null;
+    };
     const selected =
       payload.summaries.find(item => String(item.thread_id) === String(currentDetail?.thread_id)) ||
-      payload.summaries.find(item =>
-        threadKeys(currentThreadId).some(key => String(item.thread_id) === key || (item.thread_keys || []).includes(key))
-      ) ||
-      payload.summaries.find(item =>
-        threadKeys(activeThreadId() || payload.activeThreadId).some(key => String(item.thread_id) === key || (item.thread_keys || []).includes(key))
-      ) ||
-      payload.summaries[0];
+      summaryForThread(currentThreadId) ||
+      summaryForThread(root.__ctiSelectedThreadId) ||
+      root.__ctiSelectedSummary ||
+      ((payload.summaries || []).length === 1 ? payload.summaries[0] : null);
     if (!selected) {
       body.textContent = 'No token records found.';
       return;
     }
+    root.__ctiSelectedThreadId = selected.thread_id;
+    root.__ctiSelectedSummary = selected;
+    root.__ctiSessionTotalTokens = selected.session_total_tokens;
+    updateHudTitle(root);
     body.innerHTML = `
       <div>status: ${pressure(selected.latest_context_percent)} | left ${token(remainingContext(selected))}</div>
       <div>context: ${token(selected.latest_context_tokens)} / ${token(selected.context_window)} (${pct(selected.latest_context_percent)})</div>
@@ -1062,16 +1094,23 @@ INJECTION_SCRIPT = r"""
     toggle.textContent = root.getAttribute('data-collapsed') === 'true' ? '+' : '−';
     updateUnitButtons(root);
   }
+  function updateHudTitle(root) {
+    const title = root.querySelector('[data-cti-title]');
+    if (!title) return;
+    const collapsed = root.getAttribute('data-collapsed') === 'true';
+    const total = root.__ctiSessionTotalTokens;
+    title.textContent = collapsed && total != null ? `Monitor (ttk:${token(total)})` : 'Monitor';
+  }
   function clearFooters() {
     document.querySelectorAll(`[${FOOTER_ATTR}]`).forEach(node => node.remove());
     document.querySelectorAll(`[${CHIP_ATTR}]`).forEach(node => node.remove());
   }
   function detailForCurrentThread(payload) {
     const details = payload.detailsByThread || {};
-    for (const key of threadKeys(activeThreadId() || payload.activeThreadId || payload.selectedThreadId)) {
+    for (const key of threadKeys(activeThreadId() || payload.activeThreadId)) {
       if (details[key]) return details[key];
     }
-    return payload.detail;
+    return null;
   }
   function scheduleDetailApply(payload) {
     if (window.__codexContextTokenInspectorDetailTimer) {
@@ -1082,19 +1121,23 @@ INJECTION_SCRIPT = r"""
       window.__codexContextTokenInspectorIdleCallback = null;
     }
     const run = () => {
-      window.__codexContextTokenInspectorDetailTimer = null;
-      const work = () => {
-        if (window.__codexContextTokenInspectorApplying) return;
-        window.__codexContextTokenInspectorApplying = true;
-        try {
-          const currentDetail = detailForVisiblePage(payload) || detailForCurrentThread(payload);
-          payload.currentDetailThreadId = currentDetail?.thread_id || null;
-          applyHud(payload, currentDetail);
+    window.__codexContextTokenInspectorDetailTimer = null;
+    const work = () => {
+      if (window.__codexContextTokenInspectorApplying) return;
+      window.__codexContextTokenInspectorApplying = true;
+      try {
+        const currentDetail = detailForVisiblePage(payload) || detailForCurrentThread(payload);
+        payload.currentDetailThreadId = currentDetail?.thread_id || null;
+        applyHud(payload, currentDetail);
+        if (currentDetail) {
           applyFooters(currentDetail);
-        } finally {
-          setTimeout(() => { window.__codexContextTokenInspectorApplying = false; }, 0);
+        } else {
+          clearFooters();
         }
-      };
+      } finally {
+        setTimeout(() => { window.__codexContextTokenInspectorApplying = false; }, 0);
+      }
+    };
       if (window.requestIdleCallback) {
         window.__codexContextTokenInspectorIdleCallback = window.requestIdleCallback(work, { timeout: 900 });
       } else {
@@ -1109,7 +1152,6 @@ INJECTION_SCRIPT = r"""
       payload.activeThreadId = activeThreadId() || payload.activeThreadId;
       applySidebar(payload.summaries || []);
       applyHud(payload, detailForCurrentThread(payload));
-      clearFooters();
     } finally {
       setTimeout(() => { window.__codexContextTokenInspectorApplying = false; }, 0);
     }
