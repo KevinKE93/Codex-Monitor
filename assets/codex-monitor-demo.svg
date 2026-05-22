@@ -30,7 +30,7 @@
   <text x="544" y="200" fill="#222831" font-family="Inter, system-ui, sans-serif" font-size="15">I added a local overlay that reads session logs and injects compact metrics.</text>
   <text x="544" y="224" fill="#66717E" font-family="Inter, system-ui, sans-serif" font-size="12">Worked for 1m 42s · 14:38</text>
   <rect x="544" y="234" width="472" height="24" rx="6" fill="#F1F4F7" stroke="#D8DEE6"/>
-  <text x="556" y="251" fill="#303842" font-family="SFMono-Regular, Menlo, monospace" font-size="12">ctx 156.1K/258.4K (60.4%) | turn token 156.9K | total token 509.8M  round 14/18</text>
+  <text x="556" y="251" fill="#303842" font-family="SFMono-Regular, Menlo, monospace" font-size="10.5">ctx 156.1K/258.4K (60.4%) | turn token 156.9K | total token 509.8M  user rounds 14/18, assistant rounds 102/116</text>
 
   <rect x="390" y="286" width="600" height="48" rx="9" fill="#F3F6F9" stroke="#E0E5EB"/>
   <text x="414" y="316" fill="#222831" font-family="Inter, system-ui, sans-serif" font-size="15">Make the hover panel simpler and keep units readable.</text>
@@ -39,7 +39,7 @@
   <text x="544" y="382" fill="#222831" font-family="Inter, system-ui, sans-serif" font-size="15">Done. The sidebar hover now shows only session totals and defaults to K.</text>
   <text x="544" y="406" fill="#66717E" font-family="Inter, system-ui, sans-serif" font-size="12">Worked for 58s · 14:42</text>
   <rect x="544" y="416" width="500" height="24" rx="6" fill="#F1F4F7" stroke="#D8DEE6"/>
-  <text x="556" y="433" fill="#303842" font-family="SFMono-Regular, Menlo, monospace" font-size="12">ctx 184.1K/258.4K (71.2%) | turn token 28.6K | total token 513.0M  round 15/18</text>
+  <text x="556" y="433" fill="#303842" font-family="SFMono-Regular, Menlo, monospace" font-size="10.5">ctx 184.1K/258.4K (71.2%) | turn token 28.6K | total token 513.0M  user rounds 15/18, assistant rounds 109/116</text>
 
   <rect x="390" y="476" width="604" height="48" rx="9" fill="#F3F6F9" stroke="#E0E5EB"/>
   <text x="414" y="506" fill="#222831" font-family="Inter, system-ui, sans-serif" font-size="15">Package it as a Codex plugin and publish it.</text>

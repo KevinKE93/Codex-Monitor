@@ -202,6 +202,7 @@ def parse_session_detail(path: str | Path) -> dict[str, Any]:
     meta: dict[str, Any] = {}
     messages: list[dict[str, Any]] = []
     pending_assistant_index: int | None = None
+    current_turn_index = 0
 
     for row in read_jsonl(path):
         payload = row.get("payload")
@@ -218,6 +219,8 @@ def parse_session_detail(path: str | Path) -> dict[str, Any]:
                     text = message_text(payload)
                     if should_skip_message(role, text):
                         continue
+                    if role == "user":
+                        current_turn_index += 1
                     messages.append(
                         {
                             "timestamp": timestamp,
@@ -225,6 +228,8 @@ def parse_session_detail(path: str | Path) -> dict[str, Any]:
                             "text": text,
                             "token_footer": None,
                             "token_usage": None,
+                            "turn_index": current_turn_index if role == "assistant" and current_turn_index else None,
+                            "total_turns": None,
                         }
                     )
                     if role == "assistant":
@@ -237,6 +242,9 @@ def parse_session_detail(path: str | Path) -> dict[str, Any]:
             messages[pending_assistant_index]["token_usage"] = usage
             messages[pending_assistant_index]["token_footer"] = format_reply_footer(usage)
             pending_assistant_index = None
+
+    for message in messages:
+        message["total_turns"] = current_turn_index or None
 
     return {
         "summary": summarize_session(path),
@@ -325,6 +333,10 @@ def format_reply_chip(
     summary: dict[str, Any],
     round_index: int | None = None,
     total_rounds: int | None = None,
+    user_turn_index: int | None = None,
+    user_total_turns: int | None = None,
+    assistant_turn_index: int | None = None,
+    assistant_total_turns: int | None = None,
 ) -> str:
     percent = summary.get("latest_context_percent")
     percent_text = f" ({percent:.1f}%)" if isinstance(percent, float) else ""
@@ -334,8 +346,16 @@ def format_reply_chip(
         f"turn token {comma(summary.get('latest_turn_total_tokens'))} | "
         f"total token {comma(summary.get('session_total_tokens'))}"
     )
-    if round_index is not None and total_rounds is not None:
-        chip += f"  round {round_index}/{total_rounds}"
+    user_index = user_turn_index if user_turn_index is not None else round_index
+    user_total = user_total_turns if user_total_turns is not None else total_rounds
+    assistant_index = assistant_turn_index if assistant_turn_index is not None else round_index
+    assistant_total = assistant_total_turns if assistant_total_turns is not None else total_rounds
+    if user_index is not None and user_total is not None:
+        chip += f"  user rounds {user_index}/{user_total}"
+        if assistant_index is not None and assistant_total is not None:
+            chip += f", assistant rounds {assistant_index}/{assistant_total}"
+    elif assistant_index is not None and assistant_total is not None:
+        chip += f"  assistant rounds {assistant_index}/{assistant_total}"
     return chip
 
 

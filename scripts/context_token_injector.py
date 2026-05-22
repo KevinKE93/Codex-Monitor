@@ -227,10 +227,7 @@ def build_payload(paths: list[str], limit: int, selected_thread_id: str | None) 
         normalized = normalize_thread_id(str(thread_id))
         by_thread[normalized] = summary
         by_thread[f"local:{normalized}"] = summary
-    selected_key = normalize_thread_id(selected_thread_id or "") if selected_thread_id else ""
-    selected = by_thread.get(selected_key) or by_thread.get(selected_thread_id or "")
-    if selected is None and summaries:
-        selected = summaries[0]
+    selected = summaries[0] if summaries else None
 
     compact_summaries = []
     for summary in summaries:
@@ -276,13 +273,19 @@ def build_payload(paths: list[str], limit: int, selected_thread_id: str | None) 
                 "footer": message.get("token_footer"),
                 "chip": inspector.format_reply_chip(
                     message["token_usage"],
-                    round_index=index,
-                    total_rounds=total_rounds,
+                    user_turn_index=message.get("turn_index"),
+                    user_total_turns=message.get("total_turns"),
+                    assistant_turn_index=index,
+                    assistant_total_turns=total_rounds,
                 ),
                 "tokenUsage": message["token_usage"],
                 "textPrefix": text_prefix(message.get("text")),
-                "roundIndex": index,
-                "totalRounds": total_rounds,
+                "roundIndex": message.get("turn_index") or index,
+                "totalRounds": message.get("total_turns") or total_rounds,
+                "userTurnIndex": message.get("turn_index"),
+                "userTotalTurns": message.get("total_turns"),
+                "assistantTurnIndex": index,
+                "assistantTotalTurns": total_rounds,
             }
             for index, message in enumerate(assistant_token_messages, start=1)
         ]
@@ -308,7 +311,8 @@ def build_payload(paths: list[str], limit: int, selected_thread_id: str | None) 
             detail = item_detail
 
     return {
-        "selectedThreadId": selected_thread_id or (selected or {}).get("thread_id"),
+        "activeThreadId": selected_thread_id,
+        "selectedThreadId": (selected or {}).get("thread_id") or selected_thread_id,
         "summaries": compact_summaries,
         "detail": detail,
         "detailsByThread": details_by_thread,
@@ -407,18 +411,31 @@ INJECTION_SCRIPT = r"""
   }
   function itemChip(item, roundIndex, totalRounds) {
     const usage = item?.tokenUsage || {};
+    const userIndex = item.userTurnIndex;
+    const userTotal = item.userTotalTurns;
+    const assistantIndex = item.assistantTurnIndex || item.roundIndex || roundIndex;
+    const assistantTotal = item.assistantTotalTurns || item.totalRounds || totalRounds;
+    const turnText = userIndex && userTotal
+      ? `user rounds ${userIndex}/${userTotal}, assistant rounds ${assistantIndex}/${assistantTotal}`
+      : `assistant rounds ${assistantIndex}/${assistantTotal}`;
     return `ctx ${token(usage.latest_context_tokens)}/${token(usage.context_window)} (${pct(usage.latest_context_percent)}) | ` +
       `turn token ${token(usage.latest_turn_total_tokens)} | ` +
-      `total token ${token(usage.session_total_tokens)}  round ${roundIndex || item.roundIndex}/${totalRounds || item.totalRounds}`;
+      `total token ${token(usage.session_total_tokens)}  ${turnText}`;
   }
   function itemTitle(item, roundIndex, totalRounds) {
     const usage = item?.tokenUsage || {};
-    return [
+    const userIndex = item.userTurnIndex;
+    const userTotal = item.userTotalTurns;
+    const assistantIndex = item.assistantTurnIndex || item.roundIndex || roundIndex;
+    const assistantTotal = item.assistantTotalTurns || item.totalRounds || totalRounds;
+    const lines = [
       `Context: ${token(usage.latest_context_tokens)} / ${token(usage.context_window)} (${pct(usage.latest_context_percent)})`,
       `Turn: ${token(usage.latest_turn_total_tokens)} tokens (in ${token(usage.latest_turn_input_tokens)}, out ${token(usage.latest_turn_output_tokens)}, reasoning ${token(usage.latest_turn_reasoning_tokens)})`,
       `Session: ${token(usage.session_total_tokens)} tokens`,
-      `Round: ${roundIndex || item.roundIndex}/${totalRounds || item.totalRounds}`,
-    ].join('\n');
+    ];
+    if (userIndex && userTotal) lines.push(`User rounds: ${userIndex}/${userTotal}`);
+    lines.push(`Assistant rounds: ${assistantIndex}/${assistantTotal}`);
+    return lines.join('\n');
   }
   function rowThreadId(row) {
     return row.getAttribute('data-app-action-sidebar-thread-id') ||
@@ -900,10 +917,13 @@ INJECTION_SCRIPT = r"""
   function applyHud(payload) {
     const root = ensureHud();
     const body = root.querySelector('[data-cti-body]');
-    const currentThreadId = activeThreadId() || payload.selectedThreadId;
+    const currentThreadId = payload.selectedThreadId || activeThreadId() || payload.activeThreadId;
     const selected = payload.summaries.find(item =>
       threadKeys(currentThreadId).some(key => String(item.thread_id) === key || (item.thread_keys || []).includes(key))
     ) ||
+      payload.summaries.find(item =>
+        threadKeys(activeThreadId() || payload.activeThreadId).some(key => String(item.thread_id) === key || (item.thread_keys || []).includes(key))
+      ) ||
       payload.summaries[0];
     if (!selected) {
       body.textContent = 'No token records found.';
@@ -921,8 +941,9 @@ INJECTION_SCRIPT = r"""
     updateUnitButtons(root);
   }
   function detailForCurrentThread(payload) {
+    if (payload.detail) return payload.detail;
     const details = payload.detailsByThread || {};
-    for (const key of threadKeys(activeThreadId() || payload.selectedThreadId)) {
+    for (const key of threadKeys(payload.selectedThreadId || activeThreadId() || payload.activeThreadId)) {
       if (details[key]) return details[key];
     }
     return payload.detail;
@@ -930,7 +951,7 @@ INJECTION_SCRIPT = r"""
   function applyAll(payload) {
     window.__codexContextTokenInspectorApplying = true;
     try {
-      payload.selectedThreadId = activeThreadId() || payload.selectedThreadId;
+      payload.activeThreadId = activeThreadId() || payload.activeThreadId;
       applySidebar(payload.summaries || []);
       applyHud(payload);
       applyFooters(detailForCurrentThread(payload));
@@ -969,7 +990,8 @@ INJECTION_SCRIPT = r"""
   return {
     ok: true,
     summaries: (payload.summaries || []).length,
-    selectedThreadId: activeThreadId() || payload.selectedThreadId,
+    activeThreadId: activeThreadId() || payload.activeThreadId,
+    selectedThreadId: payload.selectedThreadId,
     assistantNodes: assistantNodes().length,
   };
 })

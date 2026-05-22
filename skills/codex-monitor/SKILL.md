@@ -46,4 +46,5 @@ If Codex Desktop upgrades or restarts, injected DOM elements disappear because t
 - `context` uses the current request's `last_token_usage.input_tokens` divided by `model_context_window`.
 - `turn token` uses the current response's `last_token_usage.total_tokens`.
 - `total token` and Monitor `session` use cumulative `total_token_usage` for the current session only.
-- `round` is based on assistant replies with token-count records in the current session JSONL.
+- `user rounds` counts non-environment user messages in the current session JSONL.
+- `assistant rounds` counts assistant messages with token-count records in the current session JSONL.
