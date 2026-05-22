@@ -14,4 +14,4 @@ sleep 2
 open "$APP" --args "--remote-debugging-port=${PORT}" "--remote-allow-origins=http://127.0.0.1:${PORT}"
 echo "Reopened Codex with local DevTools port ${PORT}."
 echo "Then run:"
-echo "  python3 ~/plugins/context-token-inspector/scripts/context_token_injector.py --port ${PORT}"
+echo "  python3 ./scripts/context_token_injector.py --port ${PORT}"

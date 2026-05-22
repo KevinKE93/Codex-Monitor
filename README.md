@@ -6,14 +6,14 @@ Codex Monitor is a local, read-only overlay for Codex Desktop. It shows context-
 
 ## Author
 
-Built by KevinKE.
+Built by Kevin KE.
 
 - GitHub: [KevinKE93](https://github.com/KevinKE93)
 
 ## Features
 
 - Draggable `Monitor` panel inside Codex Desktop.
-- Per-response chip with context usage, turn token, cumulative session token, and current visible-session round.
+- Per-response chip with context usage, turn token, cumulative session token, and current-session round.
 - Sidebar hover panel with session-level total, input, cached input, output, and reasoning tokens.
 - Token display unit switcher: raw, K, and M. The default unit is K.
 - Collapsed Monitor keeps the compact title and expand button while hiding unit controls.
@@ -32,6 +32,14 @@ It reads local Codex session logs and injects temporary DOM elements into a Code
 
 ## Usage
 
+Run the monitor with automatic re-injection:
+
+```bash
+./scripts/start_codex_monitor.sh 9222
+```
+
+This is the recommended path. It opens Codex with a local DevTools port and keeps the injector running so the overlay is restored after a Codex renderer restart.
+
 Launch Codex with a local DevTools port:
 
 ```bash
@@ -45,6 +53,21 @@ Inject the monitor into the current Codex window:
 ```
 
 Run it again after restarting Codex. The injected UI keeps itself updated while the current page is active.
+
+## Codex Desktop Updates
+
+Codex Monitor injects temporary DOM elements into the active Codex renderer. That is deliberate: it avoids changing `Codex.app` or app resources. If Codex Desktop upgrades, restarts, or replaces the renderer, the injected UI disappears and must be injected again.
+
+Use `./scripts/start_codex_monitor.sh 9222` for the automated path. It relaunches Codex with the DevTools port, runs the injector in a loop, and reopens/reinjects when the DevTools endpoint disappears. If a future Codex release changes the DOM anchors for sidebar rows or assistant turns, the monitor will still read token data, but chip placement may need a selector update.
+
+## Codex Plugin
+
+This repository is also packaged as a Codex plugin:
+
+- Manifest: `.codex-plugin/plugin.json`
+- Skill: `skills/codex-monitor/SKILL.md`
+
+The plugin exposes the local scripts and usage workflow. Current Codex plugins do not provide a supported native render hook for the desktop sidebar or message DOM, so the visible overlay is still opt-in through the local DevTools injector.
 
 ## CLI Inspection
 

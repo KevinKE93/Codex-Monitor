@@ -219,6 +219,62 @@ class ContextTokenInspectorTests(unittest.TestCase):
         self.assertEqual(len(payload["detail"]["assistantFooters"]), 1)
         self.assertEqual(payload["detail"]["assistantChips"][0], "ctx 39,949/258,400 (15.5%) | turn token 40,416 | total token 64,016  round 1/1")
 
+    def test_injector_payload_uses_session_rounds_for_historical_replies(self):
+        injector = load_injector()
+        rows = [
+            {
+                "timestamp": "2026-05-22T06:06:02.814Z",
+                "type": "session_meta",
+                "payload": {"id": "019e4e4a-demo", "cwd": "/tmp/project"},
+            },
+        ]
+        for index in range(1, 4):
+            rows.extend(
+                [
+                    {
+                        "timestamp": f"2026-05-22T06:0{index}:10.000Z",
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": f"assistant reply {index}"}],
+                        },
+                    },
+                    {
+                        "timestamp": f"2026-05-22T06:0{index}:11.000Z",
+                        "type": "event_msg",
+                        "payload": {
+                            "type": "token_count",
+                            "info": {
+                                "total_token_usage": {
+                                    "input_tokens": 10000 * index,
+                                    "cached_input_tokens": 5000 * index,
+                                    "output_tokens": 100 * index,
+                                    "reasoning_output_tokens": 20 * index,
+                                    "total_tokens": 10120 * index,
+                                },
+                                "last_token_usage": {
+                                    "input_tokens": 3000 * index,
+                                    "cached_input_tokens": 1200 * index,
+                                    "output_tokens": 100,
+                                    "reasoning_output_tokens": 20,
+                                    "total_tokens": 3120 * index,
+                                },
+                                "model_context_window": 258400,
+                            },
+                        },
+                    },
+                ]
+            )
+        session = self.write_session(rows)
+
+        payload = injector.build_payload([str(session.parent)], limit=10, selected_thread_id="019e4e4a-demo")
+        items = payload["detail"]["assistantItems"]
+
+        self.assertEqual([item["roundIndex"] for item in items], [1, 2, 3])
+        self.assertEqual([item["totalRounds"] for item in items], [3, 3, 3])
+        self.assertTrue(payload["detail"]["assistantChips"][2].endswith("round 3/3"))
+
 
 if __name__ == "__main__":
     unittest.main()

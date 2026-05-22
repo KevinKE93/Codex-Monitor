@@ -542,6 +542,8 @@ INJECTION_SCRIPT = r"""
       }
       .cti-credit {
         margin-top: 3px;
+        justify-self: end;
+        text-align: right;
         color: color-mix(in srgb, CanvasText 44%, transparent);
         font: 10px/1.2 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
       }
@@ -591,6 +593,7 @@ INJECTION_SCRIPT = r"""
       .cti-sidebar-credit {
         display: block;
         margin-top: 8px;
+        text-align: right;
         color: color-mix(in srgb, CanvasText 44%, transparent);
         font: 11px/1.2 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
       }
@@ -614,7 +617,7 @@ INJECTION_SCRIPT = r"""
     content.textContent = text;
     const credit = document.createElement('span');
     credit.className = 'cti-sidebar-credit';
-    credit.textContent = 'Made by KevinKE';
+    credit.textContent = 'Made by Kevin KE';
     tooltip.append(content, credit);
     document.body.appendChild(tooltip);
     const rect = row.getBoundingClientRect();
@@ -827,21 +830,6 @@ INJECTION_SCRIPT = r"""
     }
     return nodes.filter(node => !node.closest(`#${ROOT_ID}`));
   }
-  function pageRoundInfo(nodes) {
-    const turnKeys = [];
-    for (const node of nodes) {
-      const turn = node.closest('[data-turn-key]');
-      const key = turn?.getAttribute('data-turn-key');
-      if (key && !turnKeys.includes(key)) turnKeys.push(key);
-    }
-    const total = turnKeys.length || nodes.length;
-    return { turnKeys, total };
-  }
-  function roundForNode(node, index, info) {
-    const key = node.closest('[data-turn-key]')?.getAttribute('data-turn-key');
-    const keyIndex = key ? info.turnKeys.indexOf(key) : -1;
-    return keyIndex >= 0 ? keyIndex + 1 : index + 1;
-  }
   function metadataTargetForAssistant(node) {
     const turn = node.closest('[data-turn-key]');
     if (!turn) return null;
@@ -880,14 +868,14 @@ INJECTION_SCRIPT = r"""
     const nodes = assistantNodes();
     const items = detail.assistantItems || [];
     const used = new Set();
-    const roundInfo = pageRoundInfo(nodes);
     nodes.forEach((node, index) => {
       const item = visibleItemForNode(node, index, items, used, nodes.length);
       const text = item?.footer;
       if (!text) return;
       node.querySelector(`[${FOOTER_ATTR}]`)?.remove();
-      const pageRound = roundForNode(node, index, roundInfo);
-      const chipText = itemChip(item, pageRound, roundInfo.total);
+      const sessionRound = item.roundIndex || index + 1;
+      const sessionTotalRounds = item.totalRounds || items.length || nodes.length;
+      const chipText = itemChip(item, sessionRound, sessionTotalRounds);
       const target = metadataTargetForAssistant(node);
       let chip = null;
       if (target) {
@@ -906,7 +894,7 @@ INJECTION_SCRIPT = r"""
         }
       }
       chip.textContent = chipText;
-      chip.setAttribute('title', itemTitle(item, pageRound, roundInfo.total));
+      chip.setAttribute('title', itemTitle(item, sessionRound, sessionTotalRounds));
     });
   }
   function applyHud(payload) {
@@ -926,7 +914,7 @@ INJECTION_SCRIPT = r"""
       <div>context: ${token(selected.latest_context_tokens)} / ${token(selected.context_window)} (${pct(selected.latest_context_percent)})</div>
       <div>turn: ${token(selected.latest_turn_total_tokens)} (in ${token(selected.latest_turn_input_tokens)}, cached ${token(selected.latest_turn_cached_input_tokens)}, out ${token(selected.latest_turn_output_tokens)}, reason ${token(selected.latest_turn_reasoning_tokens)})</div>
       <div>session: ${token(selected.session_total_tokens)} (in ${token(selected.session_input_tokens)}, cached ${token(selected.session_cached_input_tokens)}, out ${token(selected.session_output_tokens)}, reason ${token(selected.session_reasoning_tokens)})</div>
-      <div class="cti-credit">Made by KevinKE</div>
+      <div class="cti-credit">Made by Kevin KE</div>
     `;
     const toggle = root.querySelector('[data-cti-toggle]');
     toggle.textContent = root.getAttribute('data-collapsed') === 'true' ? '+' : '−';

@@ -1,0 +1,38 @@
+{
+  "name": "codex-monitor",
+  "version": "0.1.0",
+  "description": "Local read-only monitor for Codex Desktop context and token usage.",
+  "author": {
+    "name": "Kevin Ke",
+    "url": "https://github.com/KevinKE93"
+  },
+  "homepage": "https://github.com/KevinKE93/Codex-Monitor",
+  "repository": "https://github.com/KevinKE93/Codex-Monitor",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "monitor",
+    "tokens",
+    "context",
+    "usage"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex Monitor",
+    "shortDescription": "Show Codex context and token usage in-window.",
+    "longDescription": "A local, read-only Codex Desktop monitor that reads session logs and injects a temporary overlay, sidebar hover panel, and per-response token chips through Chrome DevTools Protocol.",
+    "developerName": "Kevin Ke",
+    "category": "Productivity",
+    "capabilities": [
+      "Local",
+      "Read",
+      "Interactive"
+    ],
+    "defaultPrompt": [
+      "Start Codex Monitor.",
+      "Show my latest Codex token usage.",
+      "Reopen Codex with the monitor."
+    ],
+    "brandColor": "#334155"
+  }
+}
