@@ -544,6 +544,26 @@ class ContextTokenInspectorTests(unittest.TestCase):
             81000,
         )
 
+    def test_injection_bootstrap_preserves_existing_dom(self):
+        injector = load_injector()
+        script = injector.INJECTION_SCRIPT
+        bootstrap = script.split("installSidebarHoverDelegation();", 1)[1].split("installObserver(payload);", 1)[0]
+
+        self.assertNotIn("document.getElementById(ROOT_ID)?.remove()", script)
+        self.assertNotIn("__codexContextTokenInspectorObserver?.disconnect", script)
+        self.assertNotIn("querySelectorAll(`[${BADGE_ATTR}]`).forEach(node => node.remove())", bootstrap)
+        self.assertNotIn("querySelectorAll(`[${FOOTER_ATTR}]`).forEach(node => node.remove())", bootstrap)
+        self.assertNotIn("querySelectorAll(`[${CHIP_ATTR}]`).forEach(node => node.remove())", bootstrap)
+
+    def test_apply_all_prefers_visible_detail_for_hud(self):
+        injector = load_injector()
+        script = injector.INJECTION_SCRIPT
+        apply_all = script.split("function applyAll(payload)", 1)[1].split("function installObserver(payload)", 1)[0]
+
+        self.assertIn("const currentDetail = detailForVisiblePage(payload) || detailForCurrentThread(payload);", apply_all)
+        self.assertIn("applyHud(payload, currentDetail);", apply_all)
+        self.assertNotIn("applyHud(payload, detailForCurrentThread(payload));", apply_all)
+
 
 if __name__ == "__main__":
     unittest.main()
