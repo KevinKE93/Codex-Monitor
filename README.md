@@ -30,6 +30,7 @@ Run the monitor with automatic re-injection:
 ```
 
 This is the recommended path. It opens Codex with a local DevTools port and keeps the injector running so the overlay is restored after a Codex renderer restart.
+The injector refreshes the session payload every 10 seconds by default while the in-page observer handles ordinary UI changes.
 
 Launch Codex with a local DevTools port:
 

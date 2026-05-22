@@ -20,6 +20,7 @@ From the plugin root:
 ```
 
 This reopens Codex with a local DevTools port, injects the monitor, and loops so the overlay is restored after Codex restarts.
+The injector refreshes the session payload every 10 seconds by default while the in-page observer handles ordinary UI changes.
 
 ## Inject Once
 

@@ -30,6 +30,7 @@ Codex Monitor 是一个本地只读的 Codex Desktop 监控浮层。它可以在
 ```
 
 这是推荐方式。脚本会用本地 DevTools 端口打开 Codex，并持续运行 injector；当 Codex renderer 重启后，浮层会自动恢复。
+injector 默认每 10 秒刷新一次 session payload；普通的页面切换和 DOM 更新由页面内 observer 处理。
 
 手动用本地 DevTools 端口启动 Codex：
 

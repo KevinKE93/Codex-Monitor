@@ -886,31 +886,37 @@ INJECTION_SCRIPT = r"""
     return null;
   }
   function detailCandidates(payload) {
+    if (payload.__ctiDetailCandidates) return payload.__ctiDetailCandidates;
     const details = new Map();
     if (payload.detail?.thread_id) details.set(String(payload.detail.thread_id), payload.detail);
     Object.values(payload.detailsByThread || {}).forEach(detail => {
       if (detail?.thread_id) details.set(String(detail.thread_id), detail);
     });
-    return Array.from(details.values());
+    payload.__ctiDetailCandidates = Array.from(details.values());
+    return payload.__ctiDetailCandidates;
+  }
+  function detailPrefixes(detail) {
+    if (detail.__ctiPrefixes) return detail.__ctiPrefixes;
+    const items = detail?.assistantItems || [];
+    detail.__ctiPrefixes = items
+      .map((item, index) => ({ index, prefix: normalizedText(item.textPrefix) }))
+      .filter(item => item.prefix.length >= 24);
+    return detail.__ctiPrefixes;
   }
   function scoreDetailForNodes(detail, nodes) {
-    const items = detail?.assistantItems || [];
-    if (!items.length || !nodes.length) return 0;
-    const prefixes = items
-      .map(item => normalizedText(item.textPrefix))
-      .filter(prefix => prefix.length >= 24);
+    if (!nodes.length) return 0;
+    const prefixes = detailPrefixes(detail);
     if (!prefixes.length) return 0;
     let score = 0;
     const used = new Set();
     for (const node of nodes) {
       const nodeText = normalizedText(node.textContent);
       if (nodeText.length < 24) continue;
-      for (let index = 0; index < prefixes.length; index += 1) {
-        if (used.has(index)) continue;
-        const prefix = prefixes[index];
-        const matchScore = textMatchScore(nodeText, prefix);
+      for (const item of prefixes) {
+        if (used.has(item.index)) continue;
+        const matchScore = textMatchScore(nodeText, item.prefix);
         if (matchScore > 0) {
-          used.add(index);
+          used.add(item.index);
           score += matchScore;
           break;
         }
@@ -955,6 +961,19 @@ INJECTION_SCRIPT = r"""
   function detailForVisiblePage(payload) {
     const nodes = assistantNodes();
     if (!nodes.length) return null;
+    const signature = nodes
+      .map(node => normalizedText(node.textContent).slice(0, 180))
+      .join('||');
+    if (
+      payload.__ctiVisibleMatchCache &&
+      payload.__ctiVisibleMatchCache.signature === signature &&
+      payload.__ctiVisibleMatchCache.threadId
+    ) {
+      const cached = detailCandidates(payload).find(
+        detail => String(detail.thread_id) === String(payload.__ctiVisibleMatchCache.threadId)
+      );
+      if (cached) return cached;
+    }
     let best = null;
     let bestScore = 0;
     for (const detail of detailCandidates(payload)) {
@@ -964,6 +983,11 @@ INJECTION_SCRIPT = r"""
         bestScore = score;
       }
     }
+    payload.__ctiVisibleMatchCache = {
+      signature,
+      threadId: bestScore > 0 ? best?.thread_id : null,
+      score: bestScore,
+    };
     return bestScore > 0 ? best : null;
   }
   function applyFooters(detail) {
@@ -1058,7 +1082,7 @@ INJECTION_SCRIPT = r"""
       timer = setTimeout(() => {
         timer = null;
         applyAll(window.__codexContextTokenInspectorPayload);
-      }, 250);
+      }, 450);
     });
     observer.observe(document.body, { childList: true, subtree: true });
     window.__codexContextTokenInspectorObserver = observer;
@@ -1099,7 +1123,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Codex DevTools port.")
     parser.add_argument("--limit", type=int, default=100, help="Maximum recent sessions to inspect.")
-    parser.add_argument("--interval", type=float, default=5.0, help="Refresh interval in seconds.")
+    parser.add_argument("--interval", type=float, default=10.0, help="Refresh interval in seconds.")
     parser.add_argument("--once", action="store_true", help="Inject once and exit.")
     parser.add_argument(
         "paths",
