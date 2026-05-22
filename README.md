@@ -1,10 +1,10 @@
 # Codex Monitor
 
+![Codex Monitor](assets/codex-monitor-hero.png)
+
 English | [中文](README.zh-CN.md)
 
 Codex Monitor is a local, read-only overlay for Codex Desktop. It shows context-window usage and token consumption inside the existing Codex window without patching the app bundle or copying session data into this repository.
-
-![Codex Monitor demo](assets/codex-monitor-demo.svg)
 
 ## Author
 
