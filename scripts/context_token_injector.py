@@ -300,6 +300,7 @@ def build_payload(paths: list[str], limit: int, selected_thread_id: str | None) 
         ]
         item_detail = {
             "thread_id": summary.get("thread_id"),
+            "updated_at": summary.get("updated_at"),
             "footer": inspector.format_reply_footer(summary),
             "assistantFooters": assistant_footers,
             "assistantChips": assistant_chips,
@@ -860,7 +861,11 @@ INJECTION_SCRIPT = r"""
       null;
   }
   function normalizedText(value) {
-    return String(value || '').replace(/\s+/g, ' ').trim();
+    return String(value || '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/[`*~]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
   function visibleItemForNode(node, index, items, used, visibleCount) {
     const nodeText = normalizedText(node.textContent);
@@ -879,6 +884,87 @@ INJECTION_SCRIPT = r"""
       return items[fallbackIndex];
     }
     return null;
+  }
+  function detailCandidates(payload) {
+    const details = new Map();
+    if (payload.detail?.thread_id) details.set(String(payload.detail.thread_id), payload.detail);
+    Object.values(payload.detailsByThread || {}).forEach(detail => {
+      if (detail?.thread_id) details.set(String(detail.thread_id), detail);
+    });
+    return Array.from(details.values());
+  }
+  function scoreDetailForNodes(detail, nodes) {
+    const items = detail?.assistantItems || [];
+    if (!items.length || !nodes.length) return 0;
+    const prefixes = items
+      .map(item => normalizedText(item.textPrefix))
+      .filter(prefix => prefix.length >= 24);
+    if (!prefixes.length) return 0;
+    let score = 0;
+    const used = new Set();
+    for (const node of nodes) {
+      const nodeText = normalizedText(node.textContent);
+      if (nodeText.length < 24) continue;
+      for (let index = 0; index < prefixes.length; index += 1) {
+        if (used.has(index)) continue;
+        const prefix = prefixes[index];
+        const matchScore = textMatchScore(nodeText, prefix);
+        if (matchScore > 0) {
+          used.add(index);
+          score += matchScore;
+          break;
+        }
+      }
+    }
+    return score;
+  }
+  function textChunks(value) {
+    return normalizedText(value)
+      .split(/[，。！？；：、,.!?;:\n\r()[\]{}<>《》"'“”‘’|]+/)
+      .map(chunk => chunk.trim())
+      .filter(chunk => chunk.length >= 6);
+  }
+  function textMatchScore(nodeText, prefix) {
+    if (nodeText.includes(prefix)) return 100 + Math.min(prefix.length, 120);
+    const nodeHead = nodeText.slice(0, Math.min(120, nodeText.length));
+    if (prefix.includes(nodeHead)) return 80 + Math.min(nodeHead.length, 120);
+    const prefixHead = prefix.slice(0, Math.min(80, prefix.length));
+    if (nodeText.includes(prefixHead)) return 60 + Math.min(prefixHead.length, 80);
+
+    let chunkScore = 0;
+    let chunkMatches = 0;
+    for (const chunk of textChunks(prefix)) {
+      if (nodeText.includes(chunk)) {
+        chunkMatches += 1;
+        chunkScore += Math.min(chunk.length, 40);
+      }
+    }
+    if (chunkMatches >= 2 || chunkScore >= 18) return chunkScore;
+
+    chunkScore = 0;
+    chunkMatches = 0;
+    for (const chunk of textChunks(nodeText)) {
+      if (prefix.includes(chunk)) {
+        chunkMatches += 1;
+        chunkScore += Math.min(chunk.length, 40);
+      }
+    }
+    if (chunkMatches >= 2 || chunkScore >= 18) return chunkScore;
+    return 0;
+  }
+  function detailForVisiblePage(payload) {
+    const nodes = assistantNodes();
+    if (!nodes.length) return null;
+    let best = null;
+    let bestScore = 0;
+    for (const detail of detailCandidates(payload)) {
+      const score = scoreDetailForNodes(detail, nodes);
+      if (score > bestScore) {
+        best = detail;
+        bestScore = score;
+      }
+    }
+    return bestScore > 0 ? best : null;
   }
   function applyFooters(detail) {
     if (!detail) return;
@@ -914,13 +1000,15 @@ INJECTION_SCRIPT = r"""
       chip.setAttribute('title', itemTitle(item, sessionRound, sessionTotalRounds));
     });
   }
-  function applyHud(payload) {
+  function applyHud(payload, currentDetail = null) {
     const root = ensureHud();
     const body = root.querySelector('[data-cti-body]');
-    const currentThreadId = payload.selectedThreadId || activeThreadId() || payload.activeThreadId;
-    const selected = payload.summaries.find(item =>
-      threadKeys(currentThreadId).some(key => String(item.thread_id) === key || (item.thread_keys || []).includes(key))
-    ) ||
+    const currentThreadId = currentDetail?.thread_id || activeThreadId() || payload.activeThreadId || payload.selectedThreadId;
+    const selected =
+      payload.summaries.find(item => String(item.thread_id) === String(currentDetail?.thread_id)) ||
+      payload.summaries.find(item =>
+        threadKeys(currentThreadId).some(key => String(item.thread_id) === key || (item.thread_keys || []).includes(key))
+      ) ||
       payload.summaries.find(item =>
         threadKeys(activeThreadId() || payload.activeThreadId).some(key => String(item.thread_id) === key || (item.thread_keys || []).includes(key))
       ) ||
@@ -941,9 +1029,8 @@ INJECTION_SCRIPT = r"""
     updateUnitButtons(root);
   }
   function detailForCurrentThread(payload) {
-    if (payload.detail) return payload.detail;
     const details = payload.detailsByThread || {};
-    for (const key of threadKeys(payload.selectedThreadId || activeThreadId() || payload.activeThreadId)) {
+    for (const key of threadKeys(activeThreadId() || payload.activeThreadId || payload.selectedThreadId)) {
       if (details[key]) return details[key];
     }
     return payload.detail;
@@ -953,8 +1040,10 @@ INJECTION_SCRIPT = r"""
     try {
       payload.activeThreadId = activeThreadId() || payload.activeThreadId;
       applySidebar(payload.summaries || []);
-      applyHud(payload);
-      applyFooters(detailForCurrentThread(payload));
+      const currentDetail = detailForVisiblePage(payload) || detailForCurrentThread(payload);
+      payload.currentDetailThreadId = currentDetail?.thread_id || null;
+      applyHud(payload, currentDetail);
+      applyFooters(currentDetail);
     } finally {
       setTimeout(() => { window.__codexContextTokenInspectorApplying = false; }, 0);
     }
@@ -992,6 +1081,7 @@ INJECTION_SCRIPT = r"""
     summaries: (payload.summaries || []).length,
     activeThreadId: activeThreadId() || payload.activeThreadId,
     selectedThreadId: payload.selectedThreadId,
+    currentDetailThreadId: payload.currentDetailThreadId || null,
     assistantNodes: assistantNodes().length,
   };
 })
@@ -1008,7 +1098,7 @@ def inject_once(client: CDPClient, roots: list[str], limit: int) -> Any:
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Codex DevTools port.")
-    parser.add_argument("--limit", type=int, default=40, help="Maximum recent sessions to inspect.")
+    parser.add_argument("--limit", type=int, default=100, help="Maximum recent sessions to inspect.")
     parser.add_argument("--interval", type=float, default=5.0, help="Refresh interval in seconds.")
     parser.add_argument("--once", action="store_true", help="Inject once and exit.")
     parser.add_argument(
